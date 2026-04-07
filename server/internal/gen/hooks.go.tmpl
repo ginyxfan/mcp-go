@@ -19,7 +19,13 @@ type OnUnregisterSessionHookFunc func(ctx context.Context, session ClientSession
 
 // BeforeAnyHookFunc is a function that is called after the request is
 // parsed but before the method is called.
+// To abort the request and return an error to the client, call AbortRequest(ctx, err) inside the hook.
 type BeforeAnyHookFunc func(ctx context.Context, id any, method mcp.MCPMethod, message any)
+
+// AfterAnyHookFunc is a function that is called after the method is called
+// and a result is generated, but before the result is sent to the client.
+// To abort sending the result and return an error to the client, call AbortRequest(ctx, err) inside the hook.
+type AfterAnyHookFunc func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any)
 
 // OnSuccessHookFunc is a hook that will be called after the request
 // successfully generates a result, but before the result is sent to the client.
@@ -65,7 +71,11 @@ type OnRequestInitializationFunc func(ctx context.Context, id any, message any) 
 
 
 {{range .}}
+// OnBefore{{.HookName}}Func is called before the {{.HookName}} handler.
+// To abort the request and return an error to the client, call AbortRequest(ctx, err) inside the hook.
 type OnBefore{{.HookName}}Func func(ctx context.Context, id any, message *mcp.{{.ParamType}})
+// OnAfter{{.HookName}}Func is called after the {{.HookName}} handler.
+// To abort sending the result and return an error to the client, call AbortRequest(ctx, err) inside the hook.
 {{ if .ResultIsAny }}type OnAfter{{.HookName}}Func func(ctx context.Context, id any, message *mcp.{{.ParamType}}, result any){{ else }}type OnAfter{{.HookName}}Func func(ctx context.Context, id any, message *mcp.{{.ParamType}}, result *mcp.{{.ResultType}}){{ end }}
 {{end}}
 
@@ -73,6 +83,7 @@ type Hooks struct {
     OnRegisterSession   []OnRegisterSessionHookFunc
 	OnUnregisterSession   []OnUnregisterSessionHookFunc
 	OnBeforeAny      []BeforeAnyHookFunc
+	OnAfterAny       []AfterAnyHookFunc
 	OnSuccess        []OnSuccessHookFunc
 	OnError          []OnErrorHookFunc
 	OnRequestInitialization       []OnRequestInitializationFunc
@@ -84,6 +95,10 @@ type Hooks struct {
 
 func (c *Hooks) AddBeforeAny(hook BeforeAnyHookFunc) {
 	c.OnBeforeAny = append(c.OnBeforeAny, hook)
+}
+
+func (c *Hooks) AddAfterAny(hook AfterAnyHookFunc) {
+	c.OnAfterAny = append(c.OnAfterAny, hook)
 }
 
 func (c *Hooks) AddOnSuccess(hook OnSuccessHookFunc) {
@@ -138,13 +153,30 @@ func (c *Hooks) AddOnError(hook OnErrorHookFunc) {
 	c.OnError = append(c.OnError, hook)
 }
 
-func (c *Hooks) beforeAny(ctx context.Context, id any, method mcp.MCPMethod, message any) {
+func (c *Hooks) beforeAny(ctx context.Context, id any, method mcp.MCPMethod, message any) error {
 	if c == nil {
-		return
+		return nil
 	}
 	for _, hook := range c.OnBeforeAny {
 		hook(ctx, id, method, message)
+		if err := abortErr(ctx); err != nil {
+			return err
+		}
 	}
+	return nil
+}
+
+func (c *Hooks) afterAny(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) error {
+	if c == nil {
+		return nil
+	}
+	for _, hook := range c.OnAfterAny {
+		hook(ctx, id, method, message, result)
+		if err := abortErr(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Hooks) onSuccess(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) {
@@ -231,27 +263,40 @@ func (c *Hooks) AddAfter{{.HookName}}(hook OnAfter{{.HookName}}Func) {
 	c.OnAfter{{.HookName}} = append(c.OnAfter{{.HookName}}, hook)
 }
 
-func (c *Hooks) before{{.HookName}}(ctx context.Context, id any, message *mcp.{{.ParamType}}) {
-	c.beforeAny(ctx, id, mcp.{{.MethodName}}, message)
+func (c *Hooks) before{{.HookName}}(ctx context.Context, id any, message *mcp.{{.ParamType}}) error {
+	if err := c.beforeAny(ctx, id, mcp.{{.MethodName}}, message); err != nil {
+		return err
+	}
 	if c == nil {
-		return
+		return nil
 	}
 	for _, hook := range c.OnBefore{{.HookName}} {
 		hook(ctx, id, message)
+		if err := abortErr(ctx); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 {{ if .ResultIsAny -}}
-func (c *Hooks) after{{.HookName}}(ctx context.Context, id any, message *mcp.{{.ParamType}}, result any) {
+func (c *Hooks) after{{.HookName}}(ctx context.Context, id any, message *mcp.{{.ParamType}}, result any) error {
 {{- else -}}
-func (c *Hooks) after{{.HookName}}(ctx context.Context, id any, message *mcp.{{.ParamType}}, result *mcp.{{.ResultType}}) {
+func (c *Hooks) after{{.HookName}}(ctx context.Context, id any, message *mcp.{{.ParamType}}, result *mcp.{{.ResultType}}) error {
 {{- end }}
 	c.onSuccess(ctx, id, mcp.{{.MethodName}}, message, result)
+	if err := c.afterAny(ctx, id, mcp.{{.MethodName}}, message, result); err != nil {
+		return err
+	}
 	if c == nil {
-		return
+		return nil
 	}
 	for _, hook := range c.OnAfter{{.HookName}} {
 		hook(ctx, id, message, result)
+		if err := abortErr(ctx); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 {{- end -}}

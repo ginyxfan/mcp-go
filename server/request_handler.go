@@ -92,6 +92,9 @@ func (s *MCPServer) HandleMessage(
 		defer s.inflightCancels.Delete(key)
 	}
 
+	// Inject abort signal into context once, shared by all before/after hooks.
+	ctx = withAbortSignal(ctx)
+
 	switch baseMessage.Method {
 	case mcp.MethodInitialize:
 		var request mcp.InitializeRequest
@@ -104,14 +107,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeInitialize(ctx, baseMessage.ID, &request)
-			result, err = s.handleInitialize(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeInitialize(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleInitialize(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterInitialize(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterInitialize(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	case mcp.MethodPing:
 		var request mcp.PingRequest
@@ -124,14 +137,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforePing(ctx, baseMessage.ID, &request)
-			result, err = s.handlePing(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforePing(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handlePing(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterPing(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterPing(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	case mcp.MethodSetLogLevel:
 		var request mcp.SetLevelRequest
@@ -150,14 +173,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeSetLevel(ctx, baseMessage.ID, &request)
-			result, err = s.handleSetLevel(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeSetLevel(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleSetLevel(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterSetLevel(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterSetLevel(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	case mcp.MethodResourcesList:
 		var request mcp.ListResourcesRequest
@@ -176,14 +209,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeListResources(ctx, baseMessage.ID, &request)
-			result, err = s.handleListResources(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeListResources(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleListResources(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterListResources(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterListResources(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	case mcp.MethodResourcesTemplatesList:
 		var request mcp.ListResourceTemplatesRequest
@@ -202,14 +245,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeListResourceTemplates(ctx, baseMessage.ID, &request)
-			result, err = s.handleListResourceTemplates(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeListResourceTemplates(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleListResourceTemplates(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterListResourceTemplates(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterListResourceTemplates(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	case mcp.MethodResourcesRead:
 		var request mcp.ReadResourceRequest
@@ -228,14 +281,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeReadResource(ctx, baseMessage.ID, &request)
-			result, err = s.handleReadResource(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeReadResource(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleReadResource(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterReadResource(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterReadResource(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	case mcp.MethodPromptsList:
 		var request mcp.ListPromptsRequest
@@ -254,14 +317,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeListPrompts(ctx, baseMessage.ID, &request)
-			result, err = s.handleListPrompts(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeListPrompts(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleListPrompts(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterListPrompts(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterListPrompts(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	case mcp.MethodPromptsGet:
 		var request mcp.GetPromptRequest
@@ -280,14 +353,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeGetPrompt(ctx, baseMessage.ID, &request)
-			result, err = s.handleGetPrompt(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeGetPrompt(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleGetPrompt(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterGetPrompt(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterGetPrompt(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	case mcp.MethodToolsList:
 		var request mcp.ListToolsRequest
@@ -306,14 +389,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeListTools(ctx, baseMessage.ID, &request)
-			result, err = s.handleListTools(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeListTools(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleListTools(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterListTools(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterListTools(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	case mcp.MethodToolsCall:
 		var request mcp.CallToolRequest
@@ -332,14 +425,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeCallTool(ctx, baseMessage.ID, &request)
-			result, err = s.handleToolCall(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeCallTool(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleToolCall(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterCallTool(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterCallTool(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, result)
 	case mcp.MethodTasksGet:
 		var request mcp.GetTaskRequest
@@ -358,14 +461,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeGetTask(ctx, baseMessage.ID, &request)
-			result, err = s.handleGetTask(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeGetTask(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleGetTask(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterGetTask(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterGetTask(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	case mcp.MethodTasksList:
 		var request mcp.ListTasksRequest
@@ -384,14 +497,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeListTasks(ctx, baseMessage.ID, &request)
-			result, err = s.handleListTasks(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeListTasks(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleListTasks(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterListTasks(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterListTasks(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	case mcp.MethodTasksResult:
 		var request mcp.TaskResultRequest
@@ -410,14 +533,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeTaskResult(ctx, baseMessage.ID, &request)
-			result, err = s.handleTaskResult(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeTaskResult(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleTaskResult(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterTaskResult(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterTaskResult(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	case mcp.MethodTasksCancel:
 		var request mcp.CancelTaskRequest
@@ -436,14 +569,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeCancelTask(ctx, baseMessage.ID, &request)
-			result, err = s.handleCancelTask(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeCancelTask(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleCancelTask(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterCancelTask(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterCancelTask(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	case mcp.MethodCompletionComplete:
 		var request mcp.CompleteRequest
@@ -462,14 +605,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
 			request.Header = headers
-			s.hooks.beforeComplete(ctx, baseMessage.ID, &request)
-			result, err = s.handleComplete(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.beforeComplete(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.handleComplete(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.afterComplete(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.afterComplete(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		return createResponse(baseMessage.ID, *result)
 	default:
 		return createErrorResponse(

@@ -92,6 +92,9 @@ func (s *MCPServer) HandleMessage(
 		defer s.inflightCancels.Delete(key)
 	}
 
+	// Inject abort signal into context once, shared by all before/after hooks.
+	ctx = withAbortSignal(ctx)
+
 	switch baseMessage.Method {
 	{{- range .}}
 	case mcp.{{.MethodName}}:
@@ -111,14 +114,24 @@ func (s *MCPServer) HandleMessage(
 			}
 		} else {
             request.Header = headers
-			s.hooks.before{{.HookName}}(ctx, baseMessage.ID, &request)
-			result, err = s.{{.HandlerFunc}}(ctx, baseMessage.ID, request)
+			if hookErr := s.hooks.before{{.HookName}}(ctx, baseMessage.ID, &request); hookErr != nil {
+				err = &requestError{
+					id:   baseMessage.ID,
+					code: mcp.INVALID_REQUEST,
+					err:  hookErr,
+				}
+			} else {
+				result, err = s.{{.HandlerFunc}}(ctx, baseMessage.ID, request)
+			}
 		}
 		if err != nil {
 			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		s.hooks.after{{.HookName}}(ctx, baseMessage.ID, &request, result)
+		if hookErr := s.hooks.after{{.HookName}}(ctx, baseMessage.ID, &request, result); hookErr != nil {
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, hookErr)
+			return createErrorResponse(baseMessage.ID, mcp.INVALID_REQUEST, hookErr.Error())
+		}
 		{{ if .ResultIsAny }}return createResponse(baseMessage.ID, result){{ else }}return createResponse(baseMessage.ID, *result){{ end }}
 	{{- end }}
 	default:
